@@ -1,0 +1,8 @@
+RecordAuditTrails is installed as {{ include "part11-common.fullname" . }}.
+
+  kubectl port-forward svc/{{ include "part11-common.fullname" . }} 5196:{{ .Values.service.port }}
+  curl localhost:5196/health
+  Swagger UI: http://localhost:5196/swagger (when swaggerEnabled)
+
+Migrations run in an init container before each pod starts ({{ if .Values.migrations.enabled }}enabled{{ else }}DISABLED: apply them yourself{{ end }}).
+Retention: default {{ .Values.retention.defaultYears }} years; set retention.byRecordType for longer-lived record types.

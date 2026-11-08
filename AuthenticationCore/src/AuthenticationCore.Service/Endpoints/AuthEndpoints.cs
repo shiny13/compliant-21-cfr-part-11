@@ -33,6 +33,8 @@ public static class AuthEndpoints
             return Results.Json(new { keys = new[] { key.ToJwk() } });
         }).AllowAnonymous();
 
+        app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
+
         var auth = app.MapGroup("/auth");
         auth.MapPost("/login", LoginAsync).AllowAnonymous();
         auth.MapPost("/refresh", RefreshAsync).AllowAnonymous();

@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Build and test (with PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AUDIT_TEST_PG: Host=localhost;Port=5432;Username=postgres;Password=ci-only;Database=postgres
+      SIGNATURES_TEST_PG: Host=localhost;Port=5432;Username=postgres;Password=ci-only;Database=postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test all services with coverage
+        run: scripts/test-all.sh --coverage
+
+  helm:
+    name: Lint and render the Helm charts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+      - run: scripts/helm-lint.sh
+
+  images:
+    name: Build images and run the end-to-end smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: scripts/build-images.sh --tag local
+      - name: Start the platform
+        run: docker compose up -d
+      - name: Smoke test
+        run: scripts/smoke-test.sh
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - run: docker compose down -v

@@ -1,0 +1,11 @@
+RecordSignatures is installed as {{ include "part11-common.fullname" . }}.
+
+  kubectl port-forward svc/{{ include "part11-common.fullname" . }} 5197:{{ .Values.service.port }}
+  curl localhost:5197/health
+  Swagger UI: http://localhost:5197/swagger (when swaggerEnabled)
+
+Seal key id in use: {{ .Values.signatures.activeSealKeyId }}. Keep every retired key in the Secret for as long as the
+signatures it sealed must verify (the retention period).
+
+Signing needs AuthenticationCore ({{ include "part11-common.dependencyUrl" (dict "root" . "value" .Values.authentication.baseUrl "chart" "authentication-core") }}) and
+RecordAuditTrails ({{ include "part11-common.dependencyUrl" (dict "root" . "value" .Values.auditTrail.baseUrl "chart" "record-audit-trails") }}); if either is down, signing fails (503) and nothing is changed.

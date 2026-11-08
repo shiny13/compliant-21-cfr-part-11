@@ -1,0 +1,16 @@
+apiVersion: v2
+name: part11-platform
+description: The 21 CFR Part 11 platform - AuthenticationCore, RecordAuditTrails and RecordSignatures, with an optional in-cluster PostgreSQL
+type: application
+version: 0.1.0
+appVersion: "local"
+dependencies:
+  - name: authentication-core
+    version: 0.1.0
+    repository: file://../../../AuthenticationCore/helm/authentication-core
+  - name: record-audit-trails
+    version: 0.1.0
+    repository: file://../../../RecordAuditTrails/helm/record-audit-trails
+  - name: record-signatures
+    version: 0.1.0
+    repository: file://../../../RecordSignatures/helm/record-signatures

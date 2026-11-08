@@ -1,0 +1,19 @@
+# The build context is the repository root (the services share AuthenticationCore.Shared).
+**/bin/
+**/obj/
+**/TestResults/
+**/tests/
+**/docs/
+**/helm/
+deploy/
+scripts/
+.git/
+.github/
+.claude/
+.vs/
+.idea/
+*.md
+!**/OpenApi/*.md
+**/docker-compose*.yml
+docker-compose*.yml
+.env

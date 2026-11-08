@@ -1,0 +1,118 @@
+# AuthenticationCore. Defaults are safe-by-default: no accounts, no secrets, ClusterIP only.
+# Edit nothing here; override with `-f my-values.yaml` (see deploy/README.md).
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: part11/authentication-core
+  tag: ""            # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# IMPORTANT: users, refresh tokens and the revocation feed are kept IN MEMORY inside each pod. More than one replica
+# would give each pod a different view (a token revoked on one pod would stay valid on another, refresh rotation would
+# break). Run exactly one replica until those stores are replaced with a durable shared store, then set
+# acknowledgeInMemoryStores: true to allow more.
+replicaCount: 1
+acknowledgeInMemoryStores: false
+revisionHistoryLimit: 5
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Token settings (must match what the API services expect).
+authentication:
+  issuer: https://auth.local
+  audience: authentication-core-api
+  accessTokenTtl: "00:05:00"
+  refreshTokenTtl: "08:00:00"
+  maxFailedAttempts: 5
+  lockoutDuration: "00:15:00"
+
+# The RSA private key that signs tokens (PEM). Without it a new key is generated at every start and every token and
+# every other service's cached public key becomes invalid. Create the Secret with scripts/generate-secrets.sh.
+signingKey:
+  existingSecret: ""
+  secretKey: signing-key.pem
+
+# Secret used by the other services to read the revocation feed.
+feedServiceKey: ""   # dev only; production: secret.existingSecret
+
+# Accounts. Users live in memory and are re-created from this list on every start, so give each a FIXED id (a UUID):
+# it is the `sub` claim, and services such as RecordSignatures store it. Development only; production: secret.existingSecret.
+seedUsers: []
+#  - id: 00000000-0000-4000-8000-000000000001
+#    username: admin
+#    password: change-me
+#    roles: [Administrator]
+
+secret:
+  # A Secret you manage yourself. It must contain: AuthService__RevocationFeedServiceKey and, for each user N,
+  # AuthService__SeedUsers__N__Id / __Username / __Password / __Roles__0 ...
+  existingSecret: ""
+
+# Extra non-sensitive configuration, as ENV_NAME: value (e.g. Logging__LogLevel__Default: Warning).
+config: {}
+extraEnv: []
+
+migrations:        # no database; kept so the shared templates can read it
+  enabled: false
+  resources: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1654
+  runAsGroup: 1654
+  fsGroup: 1654
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 256Mi }
+
+autoscaling:
+  enabled: false     # see replicaCount warning above
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 75
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: auth.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+networkPolicy:
+  enabled: false
+  extraIngress: []
+
+nodeSelector: {}
+affinity: {}
+tolerations: []
+topologySpreadConstraints: []
+
+tests:
+  image: busybox:1.37

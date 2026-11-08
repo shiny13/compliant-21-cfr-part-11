@@ -1,0 +1,62 @@
+# DEVELOPMENT ONLY. Every password and key below is a public placeholder: anyone can read this file.
+# Spins the whole platform up on a laptop cluster (kind, minikube, Docker Desktop) with inline secrets.
+#
+#   scripts/deploy.sh --dev            # builds nothing; expects images part11/*:local to be loadable (scripts/kind-up.sh does it)
+
+x-auth: &auth
+  issuer: https://auth.local
+  audience: authentication-core-api
+x-feed: &feed dev-only-feed-key-change-me
+
+postgres:
+  enabled: true
+  existingSecret: ""
+  passwords:
+    postgres: dev-only-postgres-password
+    audit: dev-only-audit-password
+    signatures: dev-only-signatures-password
+  storage:
+    size: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+authentication-core:
+  image: { tag: local, pullPolicy: IfNotPresent }
+  authentication:
+    <<: *auth
+  feedServiceKey: *feed
+  seedUsers:
+    - { id: 00000000-0000-4000-8000-000000000001, username: admin,      password: "Dev-Admin-Passw0rd!",      roles: [Administrator] }
+    - { id: 00000000-0000-4000-8000-000000000002, username: manager,    password: "Dev-Manager-Passw0rd!",    roles: [LabManager] }
+    - { id: 00000000-0000-4000-8000-000000000003, username: reviewer,   password: "Dev-Reviewer-Passw0rd!",   roles: [Reviewer] }
+    - { id: 00000000-0000-4000-8000-000000000004, username: technician, password: "Dev-Technician-Passw0rd!", roles: [LabTechnician] }
+  signingKey: { existingSecret: "" }     # ephemeral key: fine for a laptop, tokens die when the pod restarts
+  secret: { existingSecret: "" }
+
+record-audit-trails:
+  image: { tag: local, pullPolicy: IfNotPresent }
+  replicaCount: 1
+  podDisruptionBudget: { enabled: false }
+  authentication:
+    <<: *auth
+    feedServiceKey: *feed
+  database:
+    password: dev-only-audit-password
+  secret: { existingSecret: "" }
+
+record-signatures:
+  image: { tag: local, pullPolicy: IfNotPresent }
+  replicaCount: 1
+  podDisruptionBudget: { enabled: false }
+  authentication:
+    <<: *auth
+    feedServiceKey: *feed
+  database:
+    password: dev-only-signatures-password
+  signatures:
+    organizationName: Example Organization
+    activeSealKeyId: dev-1
+    sealKeys:
+      dev-1: ZGV2LW9ubHktc2VhbC1rZXktY2hhbmdlLW1lLTAwMDAwMDAwMDA=
+  secret: { existingSecret: "" }

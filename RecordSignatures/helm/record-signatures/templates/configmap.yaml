@@ -1,0 +1,1 @@
+{{ include "part11-common.configmap" (dict "root" . "data" (include "record-signatures.configData" . | fromYaml)) }}

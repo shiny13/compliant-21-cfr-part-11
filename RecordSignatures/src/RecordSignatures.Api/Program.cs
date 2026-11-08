@@ -29,6 +29,12 @@ app.UseAuthorization();
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
     await app.Services.MigrateSignaturesDatabaseAsync();
+
+    // Used by the container's init step: apply migrations, then exit without serving.
+    if (app.Configuration.GetValue("Database:MigrateOnly", false))
+    {
+        return;
+    }
 }
 
 if (app.Configuration.GetValue("Swagger:Enabled", true))

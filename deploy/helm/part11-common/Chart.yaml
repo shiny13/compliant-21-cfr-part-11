@@ -1,0 +1,5 @@
+apiVersion: v2
+name: part11-common
+description: Shared Kubernetes templates for the 21 CFR Part 11 services (library chart, not installable on its own)
+type: library
+version: 0.1.0

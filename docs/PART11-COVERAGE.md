@@ -97,9 +97,9 @@ None of the services needs to implement a definition, but the classification of 
 
 | | |
 |---|---|
-| **AC** (Part) | 38 automated tests, including the whole service and an API running together in memory, are validation evidence for the software. Records are not stored here, so "altered records" does not arise, but tokens are signed (RS256) and tampered tokens are rejected. Stores are in memory by default, so durability must be validated once replaced. |
+| **AC** (Part) | 41 automated tests, including the whole service and an API running together in memory, are validation evidence for the software. Records are not stored here, so "altered records" does not arise, but tokens are signed (RS256) and tampered tokens are rejected. Stores are in memory by default, so durability must be validated once replaced. |
 | **RAT** (Yes) | Automated tests per layer (about 250), with line coverage near 100% including real PostgreSQL tests of migrations and triggers. **Discerning altered records:** every audit entry is hash-chained (SHA-256) per record, with `GET .../audit-trail/verify` and `GET /api/audit-trail/verify` reporting the first broken entry; document revisions are hash-chained and verifiable. |
-| **RS** (Yes) | 341 automated tests (329 without PostgreSQL), 100% line coverage with PostgreSQL, and a [requirement-to-test traceability matrix](../RecordSignatures/docs/TRACEABILITY.md). **Discerning altered signatures or records:** each signature is sealed (HMAC-SHA256) and chained; verification reports `Valid`, `RecordModifiedSinceSigning`, `Revoked`, `SealInvalid`, `ChainBroken` or `ContentMismatch`, and a failed integrity check raises a Critical alert. |
+| **RS** (Yes) | 342 automated tests (329 without PostgreSQL), 100% line coverage with PostgreSQL, and a [requirement-to-test traceability matrix](../RecordSignatures/docs/TRACEABILITY.md). **Discerning altered signatures or records:** each signature is sealed (HMAC-SHA256) and chained; verification reports `Valid`, `RecordModifiedSinceSigning`, `Revoked`, `SealInvalid`, `ChainBroken` or `ContentMismatch`, and a failed integrity check raises a Critical alert. |
 | **Org** | Plan, execute and approve IQ / OQ / PQ in your environment (PostgreSQL, network, TLS, backups, identity store). Re-run the tests after any change. Automated tests are evidence for the software, not a replacement for your validation package. |
 
 ### 11.10(b) Accurate and complete copies, human-readable and electronic
@@ -234,7 +234,28 @@ None of the services needs to implement a definition, but the classification of 
 
 ---
 
-## 5. Gaps and shared assumptions
+## 5. Deployment: containers and Kubernetes
+
+The services ship as container images with Helm charts ([deploy/README.md](../deploy/README.md)). How that deployment supports the regulation:
+
+| Area | What the deployment provides | Still the organization's job |
+|---|---|---|
+| **11.10(a)** validation | Immutable, versioned images; Helm release history; the same 26-step smoke test (`scripts/smoke-test.sh`) for Compose and Kubernetes; `helm test`; CI that runs all suites with PostgreSQL | IQ/OQ/PQ in the target cluster; record image digests, chart versions and values for each validated release |
+| **11.10(c)** protection and retention | Data lives only in PostgreSQL (services are stateless); retention values for the record types RecordSignatures writes default to 15 years; `undeploy.sh` keeps volumes and Secrets unless `--purge` | Managed or replicated PostgreSQL, backups and restore tests for the whole retention period |
+| **11.10(d)(g)** access | Services are `ClusterIP` only; optional `NetworkPolicy`; optional Ingress; tokens validated locally in every pod; non-root, read-only, no capabilities, no service-account token | TLS, ingress policy, namespace Pod Security level, who may read Secrets |
+| **11.10(e)** audit trail | Migrations run in an init container so the append-only triggers exist before any pod serves; the signature service writes to the audit service or fails closed | Restrict DDL/TRUNCATE for the application database role after migration; audit privileged access |
+| **11.70 / 11.300** secrets | Seal key, signing key, database passwords and accounts come from Kubernetes Secrets created by `generate-secrets.sh` (never overwritten); charts reference them by name | Secret manager or sealed secrets, rotation, backup of the seal key |
+| **11.300(d)** reporting | Alerts reach pod logs (`SECURITY-ALERT`) and an optional webhook | Route them to people who respond |
+| **11.10(k)** documentation | Deployment guide, configuration reference and procedures are in version control | Approval and distribution under your document control |
+
+Deployment-related items worth knowing:
+
+* AuthenticationCore keeps users and revocations in memory, so the chart enforces **one replica** and requires a signing key Secret; accounts are re-created from configuration with **fixed ids** (a `SeedUser.Id` option added for this), otherwise a restart would give each person a new token `sub` and break RecordSignatures' signer records.
+* AuthenticationCore now has `GET /health` for probes.
+* RecordAuditTrails and RecordSignatures support `Database__MigrateOnly` (migrate and exit) for the init container.
+* The Helm charts have not yet been rendered or installed in the environment where they were written; run `scripts/helm-lint.sh` and `scripts/kind-up.sh` as part of qualification.
+
+## 6. Gaps and shared assumptions
 
 | # | Gap or assumption | Owner | Effect |
 |---|---|---|---|
@@ -250,12 +271,14 @@ None of the services needs to implement a definition, but the classification of 
 | 10 | **Fails closed** when AC or RAT is down | RS | Intended; monitor both. |
 | 11 | **TLS, rate limiting, secrets management, backups** | Deployment | Not in the applications. |
 | 12 | **Time source** | Deployment | All timestamps are server UTC; keep clocks synchronized. |
-| 13 | **Procedural requirements** (11.10(i), (j), 11.100(c), training, SOPs, validation packages) | Org | See [SIGNATURE-PROCEDURES.md](../RecordSignatures/docs/SIGNATURE-PROCEDURES.md). |
+| 13 | **Helm charts not yet rendered or installed** by the authors | Org | Run `scripts/helm-lint.sh` and `scripts/kind-up.sh`; qualify the deployment. |
+| 14 | **Procedural requirements** (11.10(i), (j), 11.100(c), training, SOPs, validation packages) | Org | See [SIGNATURE-PROCEDURES.md](../RecordSignatures/docs/SIGNATURE-PROCEDURES.md). |
 
-## 6. Where to look next
+## 7. Where to look next
 
 | If you need... | Go to |
 |---|---|
+| Images, Helm charts, secrets, operations, scripts | [deploy/README.md](../deploy/README.md) |
 | Every signature clause with code and tests | [RecordSignatures/docs/PART11-COMPLIANCE.md](../RecordSignatures/docs/PART11-COMPLIANCE.md) and [TRACEABILITY.md](../RecordSignatures/docs/TRACEABILITY.md) |
 | Operating procedures and a go-live checklist | [RecordSignatures/docs/SIGNATURE-PROCEDURES.md](../RecordSignatures/docs/SIGNATURE-PROCEDURES.md) |
 | How records, audit trails, exports, retention and document control work | [RecordAuditTrails/README.md](../RecordAuditTrails/README.md) |

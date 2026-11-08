@@ -1,0 +1,1 @@
+{{ include "part11-common.deployment" (dict "root" . "migrate" true) }}

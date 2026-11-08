@@ -67,6 +67,22 @@ curl -s localhost:5196/api/records -H "Authorization: Bearer $TOKEN" -H 'Content
 
 Configuration (`appsettings.json`): `ConnectionStrings:AuditDb`, `AuthenticationCore:*` (issuer, audience, `JwksUrl`, revocation feed), `Retention:*`, `Database:MigrateOnStartup`, `Swagger:Enabled`.
 
+## Container and Kubernetes
+
+```bash
+RecordAuditTrails/scripts/build-image.sh         # image part11/record-audit-trails:local (build context: the repository root)
+RecordAuditTrails/scripts/test.sh --coverage     # tests (set AUDIT_TEST_PG for the PostgreSQL ones)
+RecordAuditTrails/scripts/helm-lint.sh           # lint this chart
+RecordAuditTrails/scripts/deploy.sh -n NS -r REL -f my-values.yaml      # install this service alone
+```
+
+* `Dockerfile`: multi-stage, chiseled non-root runtime image, port 8080, `GET /health` for probes.
+* Chart: `helm/record-audit-trails`; the whole platform (with PostgreSQL) is `deploy/helm/part11-platform`. Guide and configuration reference: [../deploy/README.md](../deploy/README.md).
+* Configure with environment variables: `ConnectionStrings__AuditDb`, `AuthenticationCore__*`, `Retention__DefaultYears`, `Retention__ByRecordType__<Type>`, `Swagger__Enabled`. The Secret needs `ConnectionStrings__AuditDb` and `AuthenticationCore__Revocation__FeedServiceKey`.
+* **Migrations:** `Database__MigrateOnStartup=true` applies them at start. `Database__MigrateOnly=true` (with it) applies them and exits with status 0 without serving; the chart runs that in an init container so several replicas can start safely.
+* Stateless: scale horizontally. All state is in PostgreSQL, which must be backed up for the whole retention period.
+* Set `retention.byRecordType` for the record types **RecordSignatures** writes (`ElectronicSignature`, `SignerEnrollment`, `SecurityAlert`) to at least the longest signed record type; the chart defaults to 15 years.
+
 ## Tests
 
 ```bash

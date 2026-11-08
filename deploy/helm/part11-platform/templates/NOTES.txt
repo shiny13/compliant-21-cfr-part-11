@@ -1,0 +1,14 @@
+The 21 CFR Part 11 platform is installed as release "{{ .Release.Name }}".
+
+  AuthenticationCore   {{ .Release.Name }}-authentication-core:8080
+  RecordAuditTrails    {{ .Release.Name }}-record-audit-trails:8080
+  RecordSignatures     {{ .Release.Name }}-record-signatures:8080
+{{- if .Values.postgres.enabled }}
+  PostgreSQL           {{ .Release.Name }}-postgres:5432 (in-cluster, single instance: development / evaluation only)
+{{- end }}
+
+Try it:
+  scripts/port-forward.sh -n {{ .Release.Namespace }} -r {{ .Release.Name }}      # localhost:5194 / 5196 / 5197
+  scripts/smoke-test.sh
+
+Verify the release:   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

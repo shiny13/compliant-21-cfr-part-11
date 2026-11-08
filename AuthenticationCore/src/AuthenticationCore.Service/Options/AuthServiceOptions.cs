@@ -24,6 +24,12 @@ public sealed class AuthServiceOptions
 
 public sealed class SeedUser
 {
+    /// <summary>
+    /// Optional fixed account id. Users live in memory and are re-seeded on every start, so without a fixed id every
+    /// restart would give a user a new id (their token `sub`), and anything that stored that id would no longer match.
+    /// </summary>
+    public Guid? Id { get; set; }
+
     public string Username { get; set; } = "";
     public string Password { get; set; } = "";
     public List<UserRole> Roles { get; set; } = [];
