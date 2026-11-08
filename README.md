@@ -21,6 +21,10 @@ Each project in this directory is built with Part 11 requirements in mind. Core 
 
 Projects will be added as individual subdirectories, each with its own documentation describing the Part 11 requirements it addresses.
 
+| Project | Description |
+|---|---|
+| [AuthenticationCore](AuthenticationCore/README.md) | Centralized JWT authentication service with a shared, stateless validation library, token revocation and role-based access. |
+
 ## Disclaimer
 
 The projects in this repository are provided as examples and reference implementations. Compliance with 21 CFR Part 11 depends on the complete system, procedures, and organizational controls in which software is used. Nothing here constitutes legal or regulatory advice; consult qualified regulatory and quality professionals and perform your own validation before using any software in a regulated environment.
