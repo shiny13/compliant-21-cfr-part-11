@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RecordAuditTrails.Api/RecordAuditTrails.Api.csproj" />
+    <Project Path="src/RecordAuditTrails.Core/RecordAuditTrails.Core.csproj" />
+    <Project Path="src/RecordAuditTrails.Database/RecordAuditTrails.Database.csproj" />
+    <Project Path="src/RecordAuditTrails.Models/RecordAuditTrails.Models.csproj" />
+    <Project Path="src/RecordAuditTrails.Services/RecordAuditTrails.Services.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RecordAuditTrails.Api.Tests/RecordAuditTrails.Api.Tests.csproj" />
+    <Project Path="tests/RecordAuditTrails.Core.Tests/RecordAuditTrails.Core.Tests.csproj" />
+    <Project Path="tests/RecordAuditTrails.Database.Tests/RecordAuditTrails.Database.Tests.csproj" />
+    <Project Path="tests/RecordAuditTrails.Services.Tests/RecordAuditTrails.Services.Tests.csproj" />
+  </Folder>
+  <Project Path="../AuthenticationCore/src/AuthenticationCore.Shared/AuthenticationCore.Shared.csproj" />
+</Solution>

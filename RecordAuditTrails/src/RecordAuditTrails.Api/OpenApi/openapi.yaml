@@ -1,0 +1,749 @@
+openapi: 3.0.3
+info:
+  title: Record Audit Trails API
+  version: 1.0.0
+  description: |
+    Electronic record management with a secure, computer-generated, time-stamped audit trail, built around the
+    closed-system controls of 21 CFR Part 11.10.
+
+    * **11.10(e) Audit trails** - every create, modify and delete of an electronic record writes one append-only
+      entry per changed field, holding the old value, new value, user, UTC timestamp and reason. Entries are
+      hash-chained (SHA-256) so tampering is detectable, and they are retained at least as long as the record.
+    * **11.10(b) Copies of records** - `GET /api/records/{id}/export` produces a complete copy of a record and its
+      audit trail as JSON or CSV (electronic) or text or HTML (human-readable), with a SHA-256 digest header.
+    * **11.10(k) Documentation controls** - system documentation is role-restricted, access and distribution are
+      logged, and every revision is stored as an immutable, hash-chained entry with its change description.
+
+    Authentication: send the access token issued by the AuthenticationCore service as `Authorization: Bearer <token>`.
+    Role hierarchy (highest first): Administrator, LabManager, Reviewer, LabTechnician. Each endpoint requires the
+    stated role *or any higher role*.
+  license:
+    name: See repository LICENSE
+servers:
+  - url: http://localhost:5196
+    description: Local development
+tags:
+  - name: Records
+  - name: Audit trail
+  - name: System documentation
+  - name: Health
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: The service is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+  /api/records:
+    post:
+      tags: [Records]
+      summary: Create an electronic record
+      description: 'Requires role LabTechnician or higher. Writes one `Create` audit entry per field.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecordRequest'
+      responses:
+        '201':
+          description: The record was created.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordCopy'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Records]
+      summary: List records
+      description: Requires role LabTechnician or higher.
+      parameters:
+        - name: recordType
+          in: query
+          schema: { type: string }
+        - name: includeDeleted
+          in: query
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: A page of records.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecordCopy'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/records/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Records]
+      summary: Get a record
+      description: Requires role LabTechnician or higher.
+      responses:
+        '200':
+          description: The record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordCopy'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Records]
+      summary: Modify a record
+      description: |
+        Requires role LabTechnician or higher. A reason is mandatory. Previous values are never overwritten in the
+        audit trail: each changed field adds an entry holding old value, new value, user, time and reason.
+        `fields`, when supplied, replaces all custom fields (omitted names are recorded as removed).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRecordRequest'
+      responses:
+        '200':
+          description: The updated record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordCopy'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Records]
+      summary: Delete a record (logical)
+      description: |
+        Requires role LabTechnician or higher. The record is flagged as deleted and remains available, with its full
+        audit trail, for the retention period. A reason is mandatory.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteRecordRequest'
+      responses:
+        '200':
+          description: The record, now flagged as deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordCopy'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/records/{id}/audit-trail:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Audit trail]
+      summary: Get the audit trail of a record
+      description: Requires role Reviewer or higher. Available for deleted records too.
+      parameters:
+        - $ref: '#/components/parameters/AuditUser'
+        - $ref: '#/components/parameters/AuditAction'
+        - $ref: '#/components/parameters/AuditField'
+        - $ref: '#/components/parameters/AuditFrom'
+        - $ref: '#/components/parameters/AuditTo'
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: Audit entries, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditTrailEntry'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/records/{id}/audit-trail/verify:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Audit trail]
+      summary: Verify the integrity of a record's audit trail
+      description: Requires role Reviewer or higher. Recomputes the hash chain and reports the first broken entry, if any.
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrityResult'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/records/{id}/export:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Records]
+      summary: Export a complete copy of a record and its audit trail
+      description: |
+        Requires role Reviewer or higher. Produces a copy suitable for FDA inspection, review and copying, including an
+        integrity verdict. The export is recorded in the access log. The `X-Content-SHA256` response header carries the
+        SHA-256 digest of the body.
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv, text, html]
+            default: json
+      responses:
+        '200':
+          description: The rendered copy.
+          headers:
+            X-Content-SHA256:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema: { type: string }
+            text/csv:
+              schema: { type: string }
+            text/plain:
+              schema: { type: string }
+            text/html:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/records/{id}/retention:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Audit trail]
+      summary: Retention status of a record and its audit trail
+      description: Requires role Reviewer or higher.
+      responses:
+        '200':
+          description: Retention dates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionStatus'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/audit-trail:
+    get:
+      tags: [Audit trail]
+      summary: Search audit entries across all records
+      description: Requires role Reviewer or higher.
+      parameters:
+        - $ref: '#/components/parameters/AuditUser'
+        - $ref: '#/components/parameters/AuditAction'
+        - $ref: '#/components/parameters/AuditField'
+        - $ref: '#/components/parameters/AuditFrom'
+        - $ref: '#/components/parameters/AuditTo'
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: Matching audit entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditTrailEntry'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/audit-trail/verify:
+    get:
+      tags: [Audit trail]
+      summary: Verify the audit trails of all records
+      description: Requires role LabManager or higher.
+      responses:
+        '200':
+          description: System-wide verification result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemIntegrityReport'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/retention/expired:
+    get:
+      tags: [Audit trail]
+      summary: Records whose retention period has ended
+      description: Requires role LabManager or higher. Nothing is deleted automatically; this lists candidates for a documented disposition decision.
+      parameters:
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: Retention-expired records.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RetentionStatus'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/documents:
+    post:
+      tags: [System documentation]
+      summary: Create a system document (revision 1)
+      description: Requires role Administrator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentRequest'
+      responses:
+        '201':
+          description: The document and its first revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentView'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [System documentation]
+      summary: List the documents the caller may read
+      description: Requires role LabTechnician or higher. Documents above the caller's role are omitted.
+      responses:
+        '200':
+          description: Readable documents.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentSummary'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/documents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      tags: [System documentation]
+      summary: Read a document revision
+      description: Requires the document's minimum read role. The access is logged.
+      parameters:
+        - name: revision
+          in: query
+          description: Revision number; the current revision when omitted.
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: The document and the requested revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentView'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/documents/{id}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    post:
+      tags: [System documentation]
+      summary: Add a new revision
+      description: Requires role Administrator. A change description is mandatory; earlier revisions are never altered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviseDocumentRequest'
+      responses:
+        '201':
+          description: The new revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentView'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [System documentation]
+      summary: Full, time-sequenced revision history
+      description: Requires the document's minimum read role. The access is logged.
+      responses:
+        '200':
+          description: All revisions, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentRevision'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/documents/{id}/revisions/verify:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      tags: [System documentation]
+      summary: Verify the revision hash chain
+      description: Requires role Reviewer or higher.
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrityResult'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/documents/{id}/distributions:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    post:
+      tags: [System documentation]
+      summary: Log the distribution of a document
+      description: Requires role LabManager or higher and read access to the document.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistributeDocumentRequest'
+      responses:
+        '200':
+          description: The access log entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessLogEntry'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/documents/{id}/access-log:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      tags: [System documentation]
+      summary: Who viewed or received a document
+      description: Requires role LabManager or higher.
+      parameters:
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: Access log entries, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccessLogEntry'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token issued by the AuthenticationCore service (`POST /auth/login`).
+  parameters:
+    RecordId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Skip:
+      name: skip
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Take:
+      name: take
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+    AuditUser:
+      name: user
+      in: query
+      description: Filter by username.
+      schema: { type: string }
+    AuditAction:
+      name: action
+      in: query
+      schema:
+        $ref: '#/components/schemas/AuditAction'
+    AuditField:
+      name: field
+      in: query
+      description: Filter by field name.
+      schema: { type: string }
+    AuditFrom:
+      name: from
+      in: query
+      description: Entries at or after this instant (ISO 8601).
+      schema: { type: string, format: date-time }
+    AuditTo:
+      name: to
+      in: query
+      description: Entries at or before this instant (ISO 8601).
+      schema: { type: string, format: date-time }
+  responses:
+    ValidationError:
+      description: The request is invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing, invalid, expired or revoked access token.
+    Forbidden:
+      description: The caller's role is not permitted.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: The data was changed concurrently or already exists.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      properties:
+        status: { type: integer }
+        title: { type: string }
+        detail: { type: string }
+    AuditAction:
+      type: string
+      enum: [Create, Modify, Delete]
+    AccessAction:
+      type: string
+      enum: [View, Distribute, Export]
+    CreateRecordRequest:
+      type: object
+      required: [recordType, title]
+      properties:
+        recordType: { type: string, maxLength: 100, example: BatchRecord }
+        title: { type: string, maxLength: 500, example: Batch 2026-114 release }
+        fields:
+          $ref: '#/components/schemas/Fields'
+        reason:
+          type: string
+          maxLength: 1000
+          description: Optional on creation (defaults to "Record created").
+    UpdateRecordRequest:
+      type: object
+      required: [reason]
+      properties:
+        title: { type: string, maxLength: 500, nullable: true }
+        fields:
+          $ref: '#/components/schemas/Fields'
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 1000
+          example: Corrected transcription error in pH reading
+        expectedVersion:
+          type: integer
+          nullable: true
+          description: Optimistic concurrency check; 409 when the record is at a different version.
+    DeleteRecordRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+        expectedVersion: { type: integer, nullable: true }
+    Fields:
+      type: object
+      nullable: true
+      description: Custom record fields (max 200). Names `Title`, `RecordType` and `IsDeleted` are reserved.
+      additionalProperties:
+        type: string
+        nullable: true
+    RecordCopy:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        recordType: { type: string }
+        title: { type: string }
+        fields:
+          $ref: '#/components/schemas/Fields'
+        version: { type: integer }
+        isDeleted: { type: boolean }
+        retainUntilUtc: { type: string, format: date-time }
+        createdUtc: { type: string, format: date-time }
+        createdBy: { type: string }
+        modifiedUtc: { type: string, format: date-time }
+        modifiedBy: { type: string }
+    AuditTrailEntry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        recordId: { type: string, format: uuid }
+        changeSetId: { type: string, format: uuid }
+        sequence: { type: integer, format: int64 }
+        recordVersion: { type: integer }
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        fieldName: { type: string }
+        oldValue: { type: string, nullable: true }
+        newValue: { type: string, nullable: true }
+        reason: { type: string }
+        userId: { type: string }
+        username: { type: string }
+        role: { type: string }
+        timestampUtc: { type: string, format: date-time }
+        previousHash: { type: string }
+        hash: { type: string }
+    IntegrityResult:
+      type: object
+      properties:
+        isValid: { type: boolean }
+        itemsChecked: { type: integer }
+        firstBrokenPosition: { type: integer, format: int64, nullable: true }
+        problem: { type: string, nullable: true }
+    SystemIntegrityReport:
+      type: object
+      properties:
+        isValid: { type: boolean }
+        recordsChecked: { type: integer }
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              recordId: { type: string, format: uuid }
+              result:
+                $ref: '#/components/schemas/IntegrityResult'
+    RetentionStatus:
+      type: object
+      properties:
+        recordId: { type: string, format: uuid }
+        recordType: { type: string }
+        retainUntilUtc: { type: string, format: date-time }
+        auditTrailRetainUntilUtc: { type: string, format: date-time }
+        retentionExpired: { type: boolean }
+        isDeleted: { type: boolean }
+    CreateDocumentRequest:
+      type: object
+      required: [documentNumber, title, category, content, minimumReadRole]
+      properties:
+        documentNumber: { type: string, example: SOP-001 }
+        title: { type: string }
+        category: { type: string, example: Operation }
+        content: { type: string }
+        minimumReadRole:
+          type: string
+          enum: [Administrator, LabManager, Reviewer, LabTechnician]
+        reason: { type: string, nullable: true }
+    ReviseDocumentRequest:
+      type: object
+      required: [content, changeDescription]
+      properties:
+        title: { type: string, nullable: true }
+        content: { type: string }
+        changeDescription: { type: string, minLength: 5, maxLength: 1000 }
+        expectedRevision: { type: integer, nullable: true }
+    DistributeDocumentRequest:
+      type: object
+      required: [recipient]
+      properties:
+        recipient: { type: string }
+        note: { type: string, nullable: true }
+    DocumentSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        documentNumber: { type: string }
+        title: { type: string }
+        category: { type: string }
+        minimumReadRole: { type: string }
+        currentRevision: { type: integer }
+        createdUtc: { type: string, format: date-time }
+        createdBy: { type: string }
+    DocumentRevision:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        documentId: { type: string, format: uuid }
+        revisionNumber: { type: integer }
+        title: { type: string }
+        content: { type: string }
+        changeDescription: { type: string }
+        authorId: { type: string }
+        author: { type: string }
+        createdUtc: { type: string, format: date-time }
+        previousHash: { type: string }
+        hash: { type: string }
+    DocumentView:
+      type: object
+      properties:
+        summary:
+          $ref: '#/components/schemas/DocumentSummary'
+        revision:
+          $ref: '#/components/schemas/DocumentRevision'
+    AccessLogEntry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        subjectType: { type: string }
+        subjectId: { type: string, format: uuid }
+        action:
+          $ref: '#/components/schemas/AccessAction'
+        userId: { type: string }
+        username: { type: string }
+        role: { type: string }
+        timestampUtc: { type: string, format: date-time }
+        details: { type: string, nullable: true }
