@@ -1,0 +1,1 @@
+{{ include "part11-common.deployment" (dict "root" . "migrate" false "volumes" (include "authentication-core.volumes" . | fromYamlArray) "volumeMounts" (include "authentication-core.volumeMounts" . | fromYamlArray)) }}

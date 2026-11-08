@@ -144,6 +144,7 @@ The seal key makes signatures unforgeable by anyone who only has database access
 * **Backup:** back up keys separately from database backups, with the same retention.
 * **If a key is exposed:** rotate at once, then re-verify all signed records (`GET /api/records/{id}/signatures`), and treat the window as a security incident.
 * The API refuses to start without a valid active key.
+* **On Kubernetes** the keys live in the Secret `<release>-signatures` as `Signatures__SealKeys__<id>`; `signatures.activeSealKeyId` (a Helm value) names the active one. `scripts/generate-secrets.sh` creates the first key (`key-1`) and never overwrites an existing Secret. Limit who can read that Secret, back it up outside the cluster, and rotate as above by adding a key to the Secret and upgrading the release. See [../../deploy/README.md](../../deploy/README.md#5-secrets).
 
 ## 10. Retention and availability for FDA inspection
 
@@ -184,6 +185,8 @@ Administrators and managers are additionally trained on sections 2, 5, 6 and 7.
 - [ ] AuthenticationCore: durable user store, configured signing key, password policy and reset process agreed
 - [ ] PostgreSQL: least-privilege application role (no DDL, no TRUNCATE), backups tested, restore tested
 - [ ] TLS in front of all three services; servers on NTP
+- [ ] Container images tagged immutably; image digests, chart versions and values recorded for the validated release
+- [ ] `scripts/helm-lint.sh`, `helm test` and the smoke test (`scripts/k8s-smoke-test.sh`) pass in the target cluster
 - [ ] Systems that display signed records show the signature report
 - [ ] Training records complete; SOPs approved
 - [ ] IQ/OQ/PQ executed, including the PostgreSQL test variants

@@ -1,0 +1,53 @@
+# Production-leaning defaults for the whole platform. Every secret comes from a Kubernetes Secret you create first
+# (scripts/generate-secrets.sh does it). For a throwaway cluster use values-dev.yaml instead.
+#
+#   helm upgrade --install part11 deploy/helm/part11-platform -n part11 --create-namespace \
+#        -f deploy/helm/part11-platform/values.yaml -f my-overrides.yaml
+#
+# Secret names below are the ones scripts/generate-secrets.sh creates for a release named "part11".
+
+# Shared token settings: these three values must agree (YAML anchors keep them in step).
+x-auth: &auth
+  issuer: https://auth.local
+  audience: authentication-core-api
+
+postgres:
+  # false to use your own PostgreSQL (then set database.host / secrets of the two services).
+  enabled: true
+  image: postgres:17-alpine
+  # Secret with keys POSTGRES_PASSWORD, AUDIT_DB_PASSWORD, SIGNATURES_DB_PASSWORD. Empty: create one from `passwords`.
+  existingSecret: part11-postgres
+  passwords: {}      # dev only: { postgres: ..., audit: ..., signatures: ... }
+  storage:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  nodeSelector: {}
+  tolerations: []
+
+authentication-core:
+  authentication:
+    <<: *auth
+  signingKey:
+    existingSecret: part11-auth-signing-key
+  secret:
+    existingSecret: part11-auth
+
+record-audit-trails:
+  replicaCount: 2
+  authentication:
+    <<: *auth
+  secret:
+    existingSecret: part11-audit
+
+record-signatures:
+  replicaCount: 2
+  authentication:
+    <<: *auth
+  signatures:
+    organizationName: The organization
+    activeSealKeyId: key-1       # must be a key id present in the Secret (Signatures__SealKeys__key-1)
+  secret:
+    existingSecret: part11-signatures

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: record-audit-trails
+description: RecordAuditTrails API - electronic records and the 21 CFR 11.10(e) audit trail on PostgreSQL
+type: application
+version: 0.1.0
+appVersion: "local"
+dependencies:
+  - name: part11-common
+    version: 0.1.0
+    repository: file://../../../deploy/helm/part11-common

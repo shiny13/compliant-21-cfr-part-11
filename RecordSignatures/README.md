@@ -158,6 +158,23 @@ An administrator can never enroll, suspend, reinstate, revoke or review **themse
 
 Errors are RFC 7807 problem documents: `400` validation, `401` token missing/invalid **or** signing credentials not accepted, `403` not allowed, `404` not found, `409` conflict (duplicate, stale record version), `423` signing locked (`lockedUntilUtc`), `503` an upstream service is unreachable (nothing was changed).
 
+## Container and Kubernetes
+
+```bash
+RecordSignatures/scripts/build-image.sh          # image part11/record-signatures:local (build context: the repository root)
+RecordSignatures/scripts/test.sh --coverage      # tests (set SIGNATURES_TEST_PG for the PostgreSQL ones)
+RecordSignatures/scripts/helm-lint.sh            # lint this chart
+RecordSignatures/scripts/deploy.sh -n NS -r REL -f my-values.yaml       # install this service alone
+```
+
+* `Dockerfile`: multi-stage, chiseled non-root runtime image, port 8080, `GET /health` for probes.
+* Chart: `helm/record-signatures`; the whole platform (with PostgreSQL and the other two services) is `deploy/helm/part11-platform`. Guide and configuration reference: [../deploy/README.md](../deploy/README.md). End-to-end check of a running platform: `scripts/smoke-test.sh`.
+* Configure with environment variables: `ConnectionStrings__SignaturesDb`, `AuthenticationCore__*`, `Signatures__AuthServiceBaseUrl`, `Signatures__AuditTrailBaseUrl`, `Signatures__ActiveSealKeyId`, `Signatures__SealKeys__<id>`, and the policy settings above.
+* **The seal keys are the most sensitive secret.** The Secret carries `Signatures__SealKeys__<id>`; back it up apart from the database and keep every retired key for the retention period ([procedure](docs/SIGNATURE-PROCEDURES.md#9-seal-key-management)). The service will not start without an active key.
+* **Migrations:** `Database__MigrateOnStartup=true` applies them at start; adding `Database__MigrateOnly=true` applies them and exits without serving. The chart runs the second in an init container.
+* Stateless apart from PostgreSQL: scale horizontally. It depends on AuthenticationCore and RecordAuditTrails being reachable; if either is down, signing fails closed (503).
+* Run behind TLS: signing requests carry passwords.
+
 ## Tests
 
 ```bash
@@ -166,11 +183,11 @@ SIGNATURES_TEST_PG="Host=localhost;Port=5433;Username=signatures_app;Password=de
 dotnet test --settings coverage.runsettings --collect:"XPlat Code Coverage"
 ```
 
-341 tests in total (329 run without PostgreSQL; the other 12 are skipped until `SIGNATURES_TEST_PG` is set).
+342 tests in total (329 run without PostgreSQL; the other 13 are skipped until `SIGNATURES_TEST_PG` is set).
 
 * **Core.Tests** (204): every service and rule, using the real services over in-memory stores and scriptable fakes for AuthenticationCore and RecordAuditTrails; HTTP clients tested against stub handlers.
 * **Database.Tests** (50): the real stores and immutability guard on in-memory SQLite; with `SIGNATURES_TEST_PG` set, also the real migrations on throw-away PostgreSQL databases: the triggers, the partial unique index, microsecond timestamp round trips, and a race for one chain position.
-* **Api.Tests** (87): the real API in memory with real AuthenticationCore token validation (tokens signed with a test RSA key). `CrossServiceTests` host the **real RecordAuditTrails API** in the same process and assert what really lands in its audit trail. A test checks `openapi.yaml` documents exactly the routes the API maps.
+* **Api.Tests** (88): the real API in memory with real AuthenticationCore token validation (tokens signed with a test RSA key). `CrossServiceTests` host the **real RecordAuditTrails API** in the same process and assert what really lands in its audit trail. A test checks `openapi.yaml` documents exactly the routes the API maps.
 * Line coverage of all three source projects is **100%** when `SIGNATURES_TEST_PG` is set (generated EF migrations and the design-time factory are excluded in `coverage.runsettings`). Without PostgreSQL, the migration runner and the Postgres-only paths are not exercised.
 
 ## Limitations (read before production use)

@@ -35,6 +35,29 @@ The repository is a small system of three cooperating services, each in its own 
 | [RecordAuditTrails](RecordAuditTrails/README.md) | Electronic records with a hash-chained, append-only audit trail (old/new value, who, when, why), FDA-ready exports, retention and revision-controlled system documentation on PostgreSQL. |
 | [RecordSignatures](RecordSignatures/README.md) | Electronic signatures (§§ 11.50, 11.70, 11.100, 11.200, 11.300): printed name, date/time and meaning on every signature, sealed to one version of a record, two-component re-authentication through AuthenticationCore, identity verification and certification, lockout and security alerts, and every action recorded in RecordAuditTrails. |
 
+## Running it: containers and Kubernetes
+
+Every service has a `Dockerfile`, a Helm chart and a `scripts/` folder; a root `docker-compose.yml` and an umbrella Helm chart run the whole platform.
+
+```bash
+scripts/build-images.sh && docker compose up -d && scripts/smoke-test.sh     # Docker Compose, with 26 end-to-end checks
+scripts/kind-up.sh && scripts/k8s-smoke-test.sh                               # local Kubernetes (kind) with Helm
+scripts/generate-secrets.sh -n part11 && scripts/deploy.sh -n part11 --tag 1.0.0 --registry R   # a real cluster
+```
+
+| Path | Contents |
+|---|---|
+| `<Project>/Dockerfile` | Multi-stage build to a chiseled, non-root runtime image (build context: the repository root) |
+| `<Project>/helm/<chart>` | Helm chart for that service: Deployment, Service, ConfigMap, Secret, probes, migrations init container, optional Ingress / HPA / PDB / NetworkPolicy |
+| `<Project>/scripts/` | `build-image.sh`, `test.sh`, `helm-lint.sh`, `deploy.sh`, `undeploy.sh` for that service |
+| `deploy/helm/part11-platform` | Umbrella chart for the whole platform, with an optional in-cluster PostgreSQL; `values.yaml` (production-leaning) and `values-dev.yaml` |
+| `deploy/helm/part11-common` | Library chart with the shared Kubernetes templates |
+| `scripts/` | Build, secrets, deploy, undeploy, port-forward, smoke tests, kind cluster, chart lint, test runner |
+| `docker-compose.yml` | The whole platform in containers for development |
+| `.github/workflows/ci.yml` | CI: tests with PostgreSQL, chart lint, image build and smoke test |
+
+Full guide, configuration reference, secrets handling, operations and Part 11 considerations: **[deploy/README.md](deploy/README.md)**. Note: the Helm charts have not yet been rendered or installed in the environment where they were written; run `scripts/helm-lint.sh` and `scripts/kind-up.sh` first (details in the guide).
+
 ## How each service handles 21 CFR Part 11
 
 **[docs/PART11-COVERAGE.md](docs/PART11-COVERAGE.md)** goes through the regulation section by section (11.1 to 11.300) and states what each service does, what it relies on another service for, what is partial, and what stays with the organization. In summary:

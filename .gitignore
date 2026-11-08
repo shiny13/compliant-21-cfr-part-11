@@ -55,3 +55,9 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Helm: resolved dependencies and packaged charts
+**/helm/**/charts/
+**/helm/**/Chart.lock
+*.tgz
+TestResults/

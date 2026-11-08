@@ -9,7 +9,7 @@ public static class UserSeeder
     {
         foreach (var seed in options.SeedUsers)
         {
-            await store.AddAsync(new UserAccount(Guid.NewGuid(), seed.Username, hasher.Hash(seed.Password), seed.Roles.Distinct().ToArray()));
+            await store.AddAsync(new UserAccount(seed.Id ?? Guid.NewGuid(), seed.Username, hasher.Hash(seed.Password), seed.Roles.Distinct().ToArray()));
         }
     }
 }

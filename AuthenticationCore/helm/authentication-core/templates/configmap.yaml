@@ -1,0 +1,2 @@
+{{- include "authentication-core.validate" . -}}
+{{ include "part11-common.configmap" (dict "root" . "data" (include "authentication-core.configData" . | fromYaml)) }}

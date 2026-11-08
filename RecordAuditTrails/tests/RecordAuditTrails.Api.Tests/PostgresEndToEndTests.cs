@@ -51,3 +51,48 @@ public class PostgresEndToEndTests
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
     }
 }
+
+public class MigrateOnlyTests
+{
+    [PostgresFact]
+    public async Task MigrateOnly_AppliesMigrationsAndExitsWithoutServing()
+    {
+        var admin = Environment.GetEnvironmentVariable(PostgresFactAttribute.Variable)!;
+        var name = "audit_mig_" + Guid.NewGuid().ToString("N");
+        await using (var conn = new NpgsqlConnection(admin))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand($"CREATE DATABASE {name}", conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        var cs = new NpgsqlConnectionStringBuilder(admin) { Database = name }.ConnectionString;
+        try
+        {
+            using var factory = new ApiFactory(new()
+            {
+                ["ConnectionStrings:AuditDb"] = cs, ["Database:MigrateOnStartup"] = "true", ["Database:MigrateOnly"] = "true",
+            }, useSqlite: false);
+            try
+            {
+                _ = factory.Services; // runs Program up to the early return
+            }
+            catch (InvalidOperationException)
+            {
+                // The test host cannot serve an application that chose to exit; the migration has already run.
+            }
+
+            await using var check = new NpgsqlConnection(cs);
+            await check.OpenAsync();
+            await using var query = new NpgsqlCommand("SELECT count(*) FROM \"__EFMigrationsHistory\"", check);
+            Assert.Equal(2L, await query.ExecuteScalarAsync());
+        }
+        finally
+        {
+            NpgsqlConnection.ClearAllPools();
+            await using var conn = new NpgsqlConnection(admin);
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand($"DROP DATABASE IF EXISTS {name} WITH (FORCE)", conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+}

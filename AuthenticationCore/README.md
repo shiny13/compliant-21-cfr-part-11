@@ -81,7 +81,7 @@ The library deliberately stays small: authentication, role policies and token pl
 ## Run it
 
 ```bash
-dotnet test                                                              # 38 tests
+dotnet test                                                              # 41 tests
 dotnet run --project src/AuthenticationCore.Service --launch-profile http    # http://localhost:5194
 dotnet run --project src/AuthenticationCore.SampleApi --launch-profile http  # http://localhost:5195
 ```
@@ -94,6 +94,22 @@ TOKEN=$(curl -s localhost:5194/auth/login -H 'Content-Type: application/json' \
 curl -H "Authorization: Bearer $TOKEN" localhost:5195/samples/reviewer   # 200
 curl -H "Authorization: Bearer $TOKEN" localhost:5195/samples/manager    # 403
 ```
+
+## Container and Kubernetes
+
+```bash
+AuthenticationCore/scripts/build-image.sh        # image part11/authentication-core:local (build context: the repository root)
+AuthenticationCore/scripts/test.sh --coverage    # tests
+AuthenticationCore/scripts/helm-lint.sh          # lint this chart
+AuthenticationCore/scripts/deploy.sh -n NS -r REL -f my-values.yaml     # install this service alone
+```
+
+* `Dockerfile`: multi-stage, chiseled non-root runtime image, listens on 8080. `GET /health` answers `200` anonymously (used by probes).
+* Chart: `helm/authentication-core` (uses the shared library chart `deploy/helm/part11-common`). Whole platform: `deploy/helm/part11-platform`. Guide: [../deploy/README.md](../deploy/README.md).
+* Configuration is by environment variables (`AuthService__MaxFailedAttempts`, `AuthenticationCore__Issuer`...). The chart's `values.yaml` documents every setting.
+* **One replica only.** Users, refresh tokens and the revocation feed are held in memory per pod; the chart refuses `replicaCount > 1` and autoscaling unless you set `acknowledgeInMemoryStores: true`.
+* **Supply the signing key** (`signingKey.existingSecret`, created by `scripts/generate-secrets.sh`), or every restart invalidates all tokens.
+* **Give each seeded user a fixed `id`** (a UUID). Accounts are re-created from configuration at each start; the id is the token `sub`, which other services (for example RecordSignatures signers) store. Without a fixed id every restart would create a different identity for the same person. `SeedUser.Id` is optional for development.
 
 ## 21 CFR Part 11 notes
 

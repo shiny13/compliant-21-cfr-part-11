@@ -9,7 +9,8 @@
 7. [Consistency between the three systems](#7-consistency-between-the-three-systems)
 8. [Failure behavior](#8-failure-behavior)
 9. [Threat model](#9-threat-model)
-10. [Extending the system](#10-extending-the-system)
+10. [Deployment](#10-deployment)
+11. [Extending the system](#11-extending-the-system)
 
 ## 1. Components
 
@@ -222,7 +223,25 @@ Choosing "audit first" for creates is deliberate: it guarantees that nothing is 
 | Information leakage in errors | Generic credential errors; generic 500s | none known |
 | Clock manipulation | Time from the server, not the client | Server clock compromise |
 
-## 10. Extending the system
+## 10. Deployment
+
+```
+Kubernetes namespace
+  Deployment record-signatures (2+ replicas)  ── init container: same image, Database__MigrateOnly=true
+      ConfigMap  : URLs, issuer/audience, policy, active seal key id
+      Secret     : connection string, Signatures__SealKeys__<id>, revocation feed key
+      /health    : startup, liveness and readiness probes
+  Service (ClusterIP :8080) ── optional Ingress (TLS), NetworkPolicy, HPA, PodDisruptionBudget
+  calls: authentication-core:8080 (login, me, logout, revoke)   record-audit-trails:8080 (records, audit trail)
+  PostgreSQL: database record_signatures, role signatures_app
+```
+
+* Stateless: any replica can serve any request; chain positions are serialized by the unique `(RecordId, Sequence)` index, not by process memory.
+* Migrations run before the app container starts; concurrent pods are safe (EF Core database lock).
+* Pods run non-root with a read-only root filesystem; the `Microsoft.AspNetCore.DataProtection` ephemeral-key warnings in the log are expected (no cookies are used).
+* See [../../deploy/README.md](../../deploy/README.md) for the images, charts, secrets, configuration reference and operations.
+
+## 11. Extending the system
 
 * **Add a meaning:** extend `MeaningCatalog.All` (code, display name, statement, minimum role); add tests; revalidate. Existing signatures are unaffected because the statement is stored with each.
 * **Change the certification text:** edit `CertificationStatement.Statement` and bump `CurrentVersion`; existing acceptances keep the version they accepted. Decide whether signers must re-accept.

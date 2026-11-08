@@ -1,0 +1,95 @@
+# The whole platform in containers: PostgreSQL + AuthenticationCore + RecordAuditTrails + RecordSignatures.
+#
+#   scripts/build-images.sh          # build the three images (tag "local")
+#   docker compose up -d
+#   scripts/smoke-test.sh            # exercise the whole flow against it
+#   docker compose down -v           # stop and delete the data
+#
+# DEVELOPMENT ONLY: every password and key below is a placeholder. For Kubernetes see deploy/README.md.
+name: part11
+
+x-auth-client: &auth-client
+  AuthenticationCore__Issuer: https://auth.local
+  AuthenticationCore__Audience: authentication-core-api
+  AuthenticationCore__JwksUrl: http://authentication-core:8080/.well-known/jwks.json
+  AuthenticationCore__Revocation__FeedUrl: http://authentication-core:8080/auth/revocations
+  AuthenticationCore__Revocation__FeedServiceKey: dev-only-feed-key-change-me
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev-only-postgres-password
+      AUDIT_DB_PASSWORD: dev-only-audit-password
+      SIGNATURES_DB_PASSWORD: dev-only-signatures-password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/helm/part11-platform/files/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  authentication-core:
+    image: part11/authentication-core:${TAG:-local}
+    build: { context: ., dockerfile: AuthenticationCore/Dockerfile }
+    environment:
+      AuthService__RevocationFeedServiceKey: dev-only-feed-key-change-me
+      # Fixed ids: users are held in memory and re-created on every start; fixed ids keep each person's
+      # identity (token "sub") stable across restarts, which RecordSignatures relies on.
+      AuthService__SeedUsers__0__Id: 00000000-0000-4000-8000-000000000001
+      AuthService__SeedUsers__0__Username: admin
+      AuthService__SeedUsers__0__Password: Dev-Admin-Passw0rd!
+      AuthService__SeedUsers__0__Roles__0: Administrator
+      AuthService__SeedUsers__1__Id: 00000000-0000-4000-8000-000000000002
+      AuthService__SeedUsers__1__Username: manager
+      AuthService__SeedUsers__1__Password: Dev-Manager-Passw0rd!
+      AuthService__SeedUsers__1__Roles__0: LabManager
+      AuthService__SeedUsers__2__Id: 00000000-0000-4000-8000-000000000003
+      AuthService__SeedUsers__2__Username: reviewer
+      AuthService__SeedUsers__2__Password: Dev-Reviewer-Passw0rd!
+      AuthService__SeedUsers__2__Roles__0: Reviewer
+      AuthService__SeedUsers__3__Id: 00000000-0000-4000-8000-000000000004
+      AuthService__SeedUsers__3__Username: technician
+      AuthService__SeedUsers__3__Password: Dev-Technician-Passw0rd!
+      AuthService__SeedUsers__3__Roles__0: LabTechnician
+    ports: ["5194:8080"]
+
+  record-audit-trails:
+    image: part11/record-audit-trails:${TAG:-local}
+    build: { context: ., dockerfile: RecordAuditTrails/Dockerfile }
+    depends_on:
+      postgres: { condition: service_healthy }
+      authentication-core: { condition: service_started }
+    environment:
+      <<: *auth-client
+      ConnectionStrings__AuditDb: Host=postgres;Port=5432;Database=record_audit_trails;Username=audit_app;Password=dev-only-audit-password
+      Database__MigrateOnStartup: "true"
+      # Signatures, enrollments and alerts must be kept at least as long as the records they relate to.
+      Retention__ByRecordType__ElectronicSignature: "15"
+      Retention__ByRecordType__SignerEnrollment: "15"
+      Retention__ByRecordType__SecurityAlert: "15"
+    ports: ["5196:8080"]
+
+  record-signatures:
+    image: part11/record-signatures:${TAG:-local}
+    build: { context: ., dockerfile: RecordSignatures/Dockerfile }
+    depends_on:
+      postgres: { condition: service_healthy }
+      authentication-core: { condition: service_started }
+      record-audit-trails: { condition: service_started }
+    environment:
+      <<: *auth-client
+      ConnectionStrings__SignaturesDb: Host=postgres;Port=5432;Database=record_signatures;Username=signatures_app;Password=dev-only-signatures-password
+      Database__MigrateOnStartup: "true"
+      Signatures__AuthServiceBaseUrl: http://authentication-core:8080
+      Signatures__AuditTrailBaseUrl: http://record-audit-trails:8080
+      Signatures__OrganizationName: Example Organization
+      Signatures__ActiveSealKeyId: dev-1
+      Signatures__SealKeys__dev-1: ZGV2LW9ubHktc2VhbC1rZXktY2hhbmdlLW1lLTAwMDAwMDAwMDA=
+    ports: ["5197:8080"]
+
+volumes:
+  pgdata:

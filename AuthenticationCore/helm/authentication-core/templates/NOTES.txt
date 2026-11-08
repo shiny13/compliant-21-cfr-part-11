@@ -1,0 +1,16 @@
+AuthenticationCore is installed as {{ include "part11-common.fullname" . }}.
+
+  kubectl port-forward svc/{{ include "part11-common.fullname" . }} 5194:{{ .Values.service.port }}
+  curl localhost:5194/health
+
+{{- if not .Values.signingKey.existingSecret }}
+
+WARNING: no signingKey.existingSecret. A new signing key is generated whenever the pod starts, which invalidates every
+token and every other service's cached key. Create one with scripts/generate-secrets.sh.
+{{- end }}
+{{- if not .Values.seedUsers }}
+{{- if not .Values.secret.existingSecret }}
+
+NOTE: no accounts are configured (seedUsers / secret.existingSecret), so nobody can log in.
+{{- end }}
+{{- end }}

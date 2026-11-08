@@ -1,0 +1,127 @@
+# RecordSignatures. Override with `-f my-values.yaml` (see deploy/README.md).
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: part11/record-signatures
+  tag: ""            # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 2
+revisionHistoryLimit: 5
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# PostgreSQL. Either set these fields (the chart builds the connection string) or provide secret.existingSecret
+# containing ConnectionStrings__SignaturesDb.
+database:
+  host: ""           # default: the postgres service of the same release (umbrella chart)
+  port: 5432
+  name: record_signatures
+  username: signatures_app
+  password: ""       # dev only; production: secret.existingSecret
+  sslMode: Prefer    # use VerifyFull with a CA in production
+
+authentication:
+  baseUrl: ""        # AuthenticationCore; default: the authentication-core service of the same release
+  issuer: https://auth.local
+  audience: authentication-core-api
+  jwksRefreshInterval: "00:05:00"
+  revocationPollInterval: "00:00:15"
+  feedServiceKey: "" # dev only; production: secret.existingSecret (AuthenticationCore__Revocation__FeedServiceKey)
+
+auditTrail:
+  baseUrl: ""        # RecordAuditTrails; default: the record-audit-trails service of the same release
+
+signatures:
+  organizationName: The organization     # printed in the 11.100(c) certification statement
+  maxFailedAttempts: 3                   # failed signing credential checks before lockout (11.300(d))
+  failureWindow: "00:15:00"
+  lockoutDuration: "00:15:00"
+  reviewIntervalMonths: 12               # periodic re-verification of each signer (11.300(b))
+  maxCommentLength: 500
+  httpTimeout: "00:00:15"
+  alertWebhookUrl: ""                    # optional: receives every security alert as JSON at once
+  # HMAC keys that seal signatures (11.70). The API refuses to start without an active key.
+  activeSealKeyId: ""
+  sealKeys: {}                           # dev only: { key-id: base64 }. Production: secret.existingSecret
+  #                                        with Signatures__SealKeys__<key-id> entries. Keep retired keys!
+
+swaggerEnabled: true
+
+secret:
+  # A Secret you manage yourself (see scripts/generate-secrets.sh). It must contain the keys listed in the chart README /
+  # deploy/README.md. When empty, this chart creates a Secret from the values above (development convenience only).
+  existingSecret: ""
+
+# Extra non-sensitive configuration, as ENV_NAME: value (e.g. Logging__LogLevel__Default: Warning).
+config: {}
+extraEnv: []
+
+migrations:
+  # Apply database migrations in an init container before the service starts (safe with several replicas: EF Core
+  # takes a database lock). Disable if migrations are applied by your own pipeline.
+  enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1654
+  runAsGroup: 1654
+  fsGroup: 1654
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+resources:
+  requests: { cpu: 100m, memory: 192Mi }
+  limits: { memory: 384Mi }
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: signatures.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+networkPolicy:
+  enabled: false
+  extraIngress: []
+
+nodeSelector: {}
+affinity: {}
+tolerations: []
+topologySpreadConstraints: []
+
+tests:
+  image: busybox:1.37
