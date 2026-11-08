@@ -24,6 +24,7 @@ Projects will be added as individual subdirectories, each with its own documenta
 | Project | Description |
 |---|---|
 | [AuthenticationCore](AuthenticationCore/README.md) | Centralized JWT authentication service with a shared, stateless validation library, token revocation and role-based access. |
+| [RecordAuditTrails](RecordAuditTrails/README.md) | Electronic records with a hash-chained, append-only audit trail (old/new value, who, when, why), FDA-ready exports, retention and revision-controlled system documentation on PostgreSQL. |
 
 ## Disclaimer
 

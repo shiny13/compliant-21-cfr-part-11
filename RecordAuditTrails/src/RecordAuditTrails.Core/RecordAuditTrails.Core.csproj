@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\RecordAuditTrails.Models\RecordAuditTrails.Models.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RecordAuditTrails.Core.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+# Local PostgreSQL for development. Credentials are development placeholders only.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: record_audit_trails
+      POSTGRES_USER: audit_app
+      POSTGRES_PASSWORD: dev-only-change-me
+    ports:
+      - "5432:5432"
+    volumes:
+      - audit-pgdata:/var/lib/postgresql/data
+volumes:
+  audit-pgdata:
