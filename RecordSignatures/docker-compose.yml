@@ -1,0 +1,14 @@
+# Local PostgreSQL for development. Credentials are development placeholders only.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: record_signatures
+      POSTGRES_USER: signatures_app
+      POSTGRES_PASSWORD: dev-only-change-me
+    ports:
+      - "5433:5432"
+    volumes:
+      - signatures-pgdata:/var/lib/postgresql/data
+volumes:
+  signatures-pgdata:

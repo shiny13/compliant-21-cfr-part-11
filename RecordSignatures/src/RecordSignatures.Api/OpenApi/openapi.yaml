@@ -1,0 +1,767 @@
+openapi: 3.0.3
+info:
+  title: Record Signatures API
+  version: 1.0.0
+  description: |
+    Electronic signatures for records held by the Record Audit Trails API, built around 21 CFR Part 11
+    sections 11.50, 11.70, 11.100, 11.200 and 11.300.
+
+    * **11.50 Signature manifestations** - every signature carries the signer's printed name, the UTC date and time
+      of signing and its meaning (Authorship, Responsibility, Review or Approval). All three appear in every
+      human-readable and electronic report.
+    * **11.70 Signature / record linking** - a signature is sealed (HMAC-SHA256) to one version and content hash
+      of one record and chained to the previous signature on that record, so it cannot be excised, copied or moved to
+      falsify a record.
+    * **11.100 General requirements** - a signature belongs to one individual and is never reused or reassigned;
+      administrators verify identity at enrollment; the individual accepts a certification that the signature is
+      the legal equivalent of their handwritten signature.
+    * **11.200 Signature components and controls** - signing requires the identification code and the password,
+      re-entered for every signing; the identity is verified by the AuthenticationCore service.
+    * **11.300 Controls for identification codes and passwords** - lockout after repeated failures, immediate
+      security alerts, suspension and revocation for lost or compromised credentials, and periodic re-verification.
+
+    Authentication: log in at the AuthenticationCore service and send its access token as
+    `Authorization: Bearer <token>`. Role hierarchy (highest first): Administrator, LabManager, Reviewer, LabTechnician.
+    Each endpoint requires the stated role *or any higher role*. Every change is also written to the
+    Record Audit Trails API under the caller's own identity.
+  license:
+    name: See repository LICENSE
+servers:
+  - url: http://localhost:5197
+    description: Local development
+tags:
+  - name: Signers
+    description: Who may sign - enrollment, certification, periodic review and loss management.
+  - name: Signatures
+    description: Applying, reading and revoking electronic signatures.
+  - name: Signed records
+    description: Signatures on a record, with verification and reports.
+  - name: Security
+    description: Security alerts for attempted unauthorized use of identification codes and passwords.
+  - name: Health
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: The service is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+  /api/signers:
+    post:
+      tags: [Signers]
+      summary: Enroll a signer (Administrator)
+      description: |
+        Verifies and registers an individual as an electronic signer (11.100(a), 11.100(b)). The administrator
+        records how the identity was verified. The individual cannot be enrolled by themself, and the enrollment is
+        pending until they accept the certification. A user id or identification code is never reassigned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollSignerRequest'
+      responses:
+        '201':
+          description: Enrolled, pending certification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Signer'
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    get:
+      tags: [Signers]
+      summary: List signers (LabManager)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/SignerStatus'
+        - name: reviewDue
+          in: query
+          description: Only signers whose periodic review is due or overdue (11.300(b)).
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: Signers ordered by printed name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Signer'
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/signers/me:
+    get:
+      tags: [Signers]
+      summary: Your own signer enrollment (LabTechnician)
+      responses:
+        '200':
+          description: Your enrollment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Signer'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/signers/me/certification:
+    post:
+      tags: [Signers]
+      summary: Accept the signature certification (LabTechnician)
+      description: |
+        The enrolled individual certifies that their electronic signature is the legally binding equivalent of
+        their handwritten signature (11.100(c)). They re-enter their identification code and password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertifyRequest'
+      responses:
+        '200':
+          description: Certification accepted; the signer is now active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Signer'
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/SignatureAuthenticationFailed' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '423': { $ref: '#/components/responses/Locked' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/signers/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Signers]
+      summary: A signer (LabManager)
+      responses:
+        '200':
+          description: The signer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Signer'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/signers/{userId}/certification:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Signers]
+      summary: Printable certification for the regulatory file (LabManager)
+      description: Identity verification, the certification statement and when it was accepted (11.100(c)).
+      responses:
+        '200':
+          description: Plain-text certification.
+          content:
+            text/plain:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/signers/{userId}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Signers]
+      summary: Suspend a signer (Administrator)
+      description: |
+        Deauthorizes a signer at once, for example when a badge or password is lost or may be compromised (11.300(c)).
+        By default the user's AuthenticationCore sessions are revoked as well, and the security unit is alerted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuspendSignerRequest'
+      responses:
+        '200': { $ref: '#/components/responses/SignerAction' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/signers/{userId}/reinstate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Signers]
+      summary: Reinstate a suspended signer (Administrator)
+      description: Requires a fresh identity verification and restarts the review period.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReinstateSignerRequest'
+      responses:
+        '200': { $ref: '#/components/responses/SignerAction' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/signers/{userId}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Signers]
+      summary: Permanently revoke a signer (Administrator)
+      description: The identity is never reassigned or reused. Existing signatures stay on record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSignerRequest'
+      responses:
+        '200': { $ref: '#/components/responses/SignerAction' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/signers/{userId}/review:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Signers]
+      summary: Complete the periodic review of a signer (Administrator)
+      description: |
+        Periodically checks and re-verifies an individual's signature authority (11.300(b)). A signer whose
+        review is overdue cannot sign until it is completed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewSignerRequest'
+      responses:
+        '200': { $ref: '#/components/responses/SignerAction' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/meanings:
+    get:
+      tags: [Signatures]
+      summary: Signature meanings and the role each needs (LabTechnician)
+      responses:
+        '200':
+          description: The closed list of meanings (11.50(a)(3)).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Meaning'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/signatures:
+    post:
+      tags: [Signatures]
+      summary: Sign a record (LabTechnician, or higher for some meanings)
+      description: |
+        Applies the caller's electronic signature to one version of a record. The caller must be an active, certified
+        signer whose review is current, and must re-enter their identification code and password for every signing
+        (11.200(a)). `recordVersion` is the version the signer reviewed; if the record has changed the request is
+        rejected. The signing is recorded in the Record Audit Trails API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+      responses:
+        '201':
+          description: Signed.
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Signature'
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/SignatureAuthenticationFailed' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '423': { $ref: '#/components/responses/Locked' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/signatures/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SignatureId'
+    get:
+      tags: [Signatures]
+      summary: A signature with its verification status (LabTechnician)
+      responses:
+        '200':
+          description: The signature and whether it still verifies.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureVerification'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/signatures/{id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/SignatureId'
+    post:
+      tags: [Signatures]
+      summary: Revoke a signature (LabManager)
+      description: Withdraws a signature with a mandatory reason. The signature itself is never altered or deleted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSignatureRequest'
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureVerification'
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/records/{recordId}/signatures:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Signed records]
+      summary: Signatures on a record, verified (LabTechnician)
+      description: |
+        Every signature on the record with the status of each: `Valid`, `RecordModifiedSinceSigning`, `Revoked`,
+        `SealInvalid`, `ChainBroken` or `ContentMismatch`. Integrity problems also raise a critical security alert.
+      responses:
+        '200':
+          description: The verified signatures.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordSignatureVerification'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/records/{recordId}/signatures/report:
+    parameters:
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [Signed records]
+      summary: Signature report in human-readable or electronic form (Reviewer)
+      description: |
+        The printed name, date and time and meaning of every signature (11.50(b)), in JSON (electronic) or text and
+        HTML (human-readable). The `X-Content-SHA256` header carries the digest of the body.
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [Json, Text, Html]
+            default: Json
+      responses:
+        '200':
+          description: The report.
+          headers:
+            X-Content-SHA256:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { type: object }
+            text/plain:
+              schema: { type: string }
+            text/html:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/security-alerts:
+    get:
+      tags: [Security]
+      summary: Security alerts (LabManager)
+      description: |
+        Alerts raised for failed signature authentications, attempts to use someone else's identification code,
+        lockouts, deauthorized signers and signature integrity failures (11.300(d)).
+      parameters:
+        - name: minimumSeverity
+          in: query
+          schema:
+            $ref: '#/components/schemas/AlertSeverity'
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Take'
+      responses:
+        '200':
+          description: Alerts, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SecurityAlert'
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token issued by the AuthenticationCore service (`POST /auth/login`).
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      description: The AuthenticationCore user id (the token's `sub`).
+      schema: { type: string }
+    SignatureId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RecordId:
+      name: recordId
+      in: path
+      required: true
+      description: Id of the record in the Record Audit Trails API.
+      schema: { type: string, format: uuid }
+    Skip:
+      name: skip
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Take:
+      name: take
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+  responses:
+    SignerAction:
+      description: The signer after the change, and whether their AuthenticationCore sessions were revoked (null when not requested).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SignerActionResult'
+    ValidationFailed:
+      description: The request is invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing, invalid, expired or revoked access token.
+    SignatureAuthenticationFailed:
+      description: The identification code or password was not accepted. The attempt is logged and counted towards lockout.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: The caller's role or signer status does not allow this.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: The record, signature or signer does not exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: The request conflicts with current state, for example a stale record version or a duplicate.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Locked:
+      description: Signing is locked after repeated failed attempts. `lockedUntilUtc` says when it ends.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unavailable:
+      description: AuthenticationCore or the Record Audit Trails API could not be reached. Nothing was changed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      properties:
+        status: { type: integer }
+        title: { type: string }
+        detail: { type: string }
+        lockedUntilUtc: { type: string, format: date-time }
+    SignerStatus:
+      type: string
+      enum: [PendingCertification, Active, Suspended, Revoked]
+    AlertSeverity:
+      type: string
+      enum: [Info, Warning, Critical]
+    AlertType:
+      type: string
+      enum: [FailedSignatureAuthentication, IdentityMismatch, SignerLockedOut, AttemptWhileLocked, SignerDeauthorized, SignatureIntegrityFailure]
+    IdentityVerificationMethod:
+      type: string
+      enum: [GovernmentIssuedId, EmployeeBadgeInPerson, HumanResourcesRecord, Other]
+    SignatureStatus:
+      type: string
+      enum: [Valid, RecordModifiedSinceSigning, Revoked, SealInvalid, ChainBroken, ContentMismatch]
+    IdentityVerificationRequest:
+      type: object
+      required: [method, evidenceReference]
+      properties:
+        method:
+          $ref: '#/components/schemas/IdentityVerificationMethod'
+        evidenceReference:
+          type: string
+          maxLength: 500
+          description: What was checked, for example "Passport sighted by HR, ticket HR-1043".
+    IdentityVerification:
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/IdentityVerificationMethod'
+        evidenceReference: { type: string }
+        verifiedByUserId: { type: string }
+        verifiedByUsername: { type: string }
+        verifiedUtc: { type: string, format: date-time }
+    EnrollSignerRequest:
+      type: object
+      required: [userId, username, printedName, employeeId, identity]
+      properties:
+        userId:
+          type: string
+          description: The AuthenticationCore user id (`sub`).
+        username:
+          type: string
+          description: The login name, which is the identification code of the signature.
+        printedName:
+          type: string
+          maxLength: 200
+          description: The name printed with every signature.
+        employeeId:
+          type: string
+          description: Organization-assigned id of the person. One live enrollment per person.
+        jobTitle:
+          type: string
+          nullable: true
+        identity:
+          $ref: '#/components/schemas/IdentityVerificationRequest'
+    CertifyRequest:
+      type: object
+      required: [username, password, statementVersion]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+        statementVersion:
+          type: string
+          example: '1.0'
+    SuspendSignerRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+        revokeSessions: { type: boolean, default: true }
+    ReinstateSignerRequest:
+      type: object
+      required: [reason, identity]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+        identity:
+          $ref: '#/components/schemas/IdentityVerificationRequest'
+    RevokeSignerRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+        revokeSessions: { type: boolean, default: true }
+    ReviewSignerRequest:
+      type: object
+      required: [reason, identity]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+        identity:
+          $ref: '#/components/schemas/IdentityVerificationRequest'
+    Signer:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: Id of the enrollment record in the Record Audit Trails API. }
+        userId: { type: string }
+        username: { type: string }
+        printedName: { type: string }
+        employeeId: { type: string }
+        jobTitle: { type: string, nullable: true }
+        status:
+          $ref: '#/components/schemas/SignerStatus'
+        statusReason: { type: string }
+        statusChangedUtc: { type: string, format: date-time }
+        enrolledUtc: { type: string, format: date-time }
+        enrolledByUserId: { type: string }
+        enrolledByUsername: { type: string }
+        identity:
+          $ref: '#/components/schemas/IdentityVerification'
+        certificationVersion: { type: string, nullable: true }
+        certificationAcceptedUtc: { type: string, format: date-time, nullable: true }
+        lastReviewedUtc: { type: string, format: date-time }
+        nextReviewDueUtc: { type: string, format: date-time }
+        version: { type: integer }
+    SignerActionResult:
+      type: object
+      properties:
+        signer:
+          $ref: '#/components/schemas/Signer'
+        sessionsRevoked:
+          type: boolean
+          nullable: true
+    Meaning:
+      type: object
+      properties:
+        code: { type: string, example: Approval }
+        displayName: { type: string }
+        statement: { type: string }
+        minimumRole: { type: string, example: LabManager }
+    SignRequest:
+      type: object
+      required: [recordId, recordVersion, meaning, username, password]
+      properties:
+        recordId: { type: string, format: uuid }
+        recordVersion:
+          type: integer
+          minimum: 1
+          description: The version of the record the signer reviewed.
+        meaning:
+          type: string
+          enum: [Authorship, Responsibility, Review, Approval]
+        comment: { type: string, maxLength: 500, nullable: true }
+        username:
+          type: string
+          description: The identification code. Must be the logged-in user's own.
+        password:
+          type: string
+          format: password
+    Signature:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        recordId: { type: string, format: uuid }
+        recordVersion: { type: integer }
+        recordContentHash: { type: string }
+        sequence: { type: integer, format: int64 }
+        signerUserId: { type: string }
+        signerUsername: { type: string }
+        signerPrintedName: { type: string }
+        meaningCode: { type: string }
+        meaningText: { type: string }
+        comment: { type: string, nullable: true }
+        signedUtc: { type: string, format: date-time }
+        previousSealHash: { type: string }
+        sealKeyId: { type: string }
+        sealHash: { type: string }
+    SignatureRevocation:
+      type: object
+      properties:
+        signatureId: { type: string, format: uuid }
+        revokedUtc: { type: string, format: date-time }
+        revokedByUserId: { type: string }
+        revokedByUsername: { type: string }
+        reason: { type: string }
+    RevokeSignatureRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+    SignatureVerification:
+      type: object
+      properties:
+        signature:
+          $ref: '#/components/schemas/Signature'
+        revocation:
+          allOf:
+            - $ref: '#/components/schemas/SignatureRevocation'
+          nullable: true
+        status:
+          $ref: '#/components/schemas/SignatureStatus'
+        detail: { type: string, nullable: true }
+    RecordSnapshot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        recordType: { type: string }
+        title: { type: string }
+        fields:
+          type: object
+          additionalProperties: { type: string, nullable: true }
+        version: { type: integer }
+        isDeleted: { type: boolean }
+    RecordSignatureVerification:
+      type: object
+      properties:
+        record:
+          $ref: '#/components/schemas/RecordSnapshot'
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignatureVerification'
+        isIntact:
+          type: boolean
+          description: False when any signature fails its seal, chain or content check.
+        problems:
+          type: array
+          items: { type: string }
+    SecurityAlert:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        raisedUtc: { type: string, format: date-time }
+        severity:
+          $ref: '#/components/schemas/AlertSeverity'
+        type:
+          $ref: '#/components/schemas/AlertType'
+        userId: { type: string, nullable: true }
+        username: { type: string, nullable: true }
+        detail: { type: string }
+        auditRecordId: { type: string, format: uuid, nullable: true }

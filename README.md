@@ -25,6 +25,7 @@ Projects will be added as individual subdirectories, each with its own documenta
 |---|---|
 | [AuthenticationCore](AuthenticationCore/README.md) | Centralized JWT authentication service with a shared, stateless validation library, token revocation and role-based access. |
 | [RecordAuditTrails](RecordAuditTrails/README.md) | Electronic records with a hash-chained, append-only audit trail (old/new value, who, when, why), FDA-ready exports, retention and revision-controlled system documentation on PostgreSQL. |
+| [RecordSignatures](RecordSignatures/README.md) | Electronic signatures (§§ 11.50, 11.70, 11.100, 11.200, 11.300): printed name, date/time and meaning on every signature, sealed to one version of a record, two-component re-authentication through AuthenticationCore, identity verification and certification, lockout and security alerts, and every action recorded in RecordAuditTrails. |
 
 ## Disclaimer
 
