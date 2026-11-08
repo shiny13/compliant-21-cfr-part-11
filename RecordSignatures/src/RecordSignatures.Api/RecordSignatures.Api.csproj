@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.3.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RecordSignatures.Core\RecordSignatures.Core.csproj" />
+    <ProjectReference Include="..\RecordSignatures.Database\RecordSignatures.Database.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="OpenApi\openapi.yaml" LogicalName="openapi.yaml" />
+  </ItemGroup>
+</Project>

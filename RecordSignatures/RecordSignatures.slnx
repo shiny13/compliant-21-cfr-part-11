@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RecordSignatures.Api/RecordSignatures.Api.csproj" />
+    <Project Path="src/RecordSignatures.Core/RecordSignatures.Core.csproj" />
+    <Project Path="src/RecordSignatures.Database/RecordSignatures.Database.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RecordSignatures.Api.Tests/RecordSignatures.Api.Tests.csproj" />
+    <Project Path="tests/RecordSignatures.Core.Tests/RecordSignatures.Core.Tests.csproj" />
+    <Project Path="tests/RecordSignatures.Database.Tests/RecordSignatures.Database.Tests.csproj" />
+  </Folder>
+  <Project Path="../AuthenticationCore/src/AuthenticationCore.Shared/AuthenticationCore.Shared.csproj" />
+</Solution>
